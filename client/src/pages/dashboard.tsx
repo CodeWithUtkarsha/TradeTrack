@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { auth } from "@/lib/auth";
 import { tradeService } from "@/lib/tradeService";
+import { formatCurrency } from "@/lib/forexCalculations";
+import { ForexMetrics } from "@/components/ForexMetrics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -307,6 +309,9 @@ export default function Dashboard() {
           </AlertDescription>
         </Alert>
 
+        {/* Forex Metrics */}
+        {trades && <ForexMetrics trades={trades} />}
+
         {/* Dashboard Widgets Grid */}
         <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-6 mb-8">
           {/* Total P&L Widget */}
@@ -325,7 +330,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <>
-                  <div className={`text-3xl font-bold mb-2 ${displayStats?.totalPnL >= 0 ? 'status-positive' : 'status-negative'}`} data-testid="text-total-pnl">
+                                    <div className={`text-3xl font-bold mb-2 ${displayStats?.totalPnL >= 0 ? 'status-positive' : 'status-negative'}`} data-testid="text-total-pnl">
                     {formatCurrency(displayStats?.totalPnL || 0)}
                   </div>
                   <div className="text-sm text-gray-400">

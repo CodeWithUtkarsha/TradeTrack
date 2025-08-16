@@ -1,10 +1,18 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { quickTradeSchema, type QuickTradeRequest } from "@shared/schema";
 import { tradeService } from "@/lib/tradeService";
 import { useToast } from "@/hooks/use-toast";
+import { 
+  calculateForexPnL, 
+  isForexPair, 
+  getSupportedPairs, 
+  LOT_SIZES,
+  formatCurrency,
+  formatPips
+} from "@/lib/forexCalculations";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +40,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, Calculator } from "lucide-react";
 
 interface TradeModalProps {
   children?: React.ReactNode;
@@ -41,6 +49,7 @@ interface TradeModalProps {
 export default function TradeModal({ children }: TradeModalProps) {
   const [open, setOpen] = useState(false);
   const [mood, setMood] = useState([3]);
+  const [pnlPreview, setPnlPreview] = useState<{pnl: number; pips: number} | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -52,22 +61,85 @@ export default function TradeModal({ children }: TradeModalProps) {
       entryPrice: "",
       exitPrice: "",
       quantity: "",
+      lotType: "micro",
+      stopLoss: "",
+      takeProfit: "",
       mood: 3,
       notes: "",
       tags: [],
     },
   });
 
+  // Watch form values for real-time calculation
+  const watchedValues = form.watch();
+
+  // Calculate PnL preview when exit price is provided
+  const calculatePnLPreview = () => {
+    const { symbol, type, entryPrice, exitPrice, quantity, lotType } = watchedValues;
+    
+    if (symbol && entryPrice && exitPrice && quantity && isForexPair(symbol)) {
+      try {
+        const result = calculateForexPnL({
+          entryPrice: parseFloat(entryPrice),
+          exitPrice: parseFloat(exitPrice),
+          lotSize: parseFloat(quantity),
+          lotType: lotType,
+          symbol: symbol,
+          type: type as 'Long' | 'Short',
+        });
+        setPnlPreview({ pnl: result.pnl, pips: result.pips });
+      } catch (error) {
+        setPnlPreview(null);
+      }
+    } else {
+      setPnlPreview(null);
+    }
+  };
+
+  // Update preview when relevant fields change
+  React.useEffect(() => {
+    calculatePnLPreview();
+  }, [watchedValues.symbol, watchedValues.entryPrice, watchedValues.exitPrice, watchedValues.quantity, watchedValues.lotType, watchedValues.type]);
+
   const createTradeMutation = useMutation({
     mutationFn: async (data: QuickTradeRequest) => {
       console.log('🎯 TradeModal: Creating trade with data:', data);
+      
+      let calculatedPnL = 0;
+      let calculatedPips = 0;
+      let calculatedReturnPercent = 0;
+
+      // Calculate PnL for completed trades using forex calculations
+      if (data.exitPrice && isForexPair(data.symbol)) {
+        try {
+          const result = calculateForexPnL({
+            entryPrice: parseFloat(data.entryPrice),
+            exitPrice: parseFloat(data.exitPrice),
+            lotSize: parseFloat(data.quantity),
+            lotType: data.lotType,
+            symbol: data.symbol,
+            type: data.type as 'Long' | 'Short',
+          });
+          calculatedPnL = result.pnl;
+          calculatedPips = result.pips;
+          calculatedReturnPercent = result.returnPercent;
+        } catch (error) {
+          console.warn('Failed to calculate forex PnL:', error);
+        }
+      }
       
       const tradeData = {
         symbol: data.symbol,
         type: data.type,
         entryPrice: parseFloat(data.entryPrice),
         exitPrice: data.exitPrice ? parseFloat(data.exitPrice) : undefined,
-        quantity: parseInt(data.quantity),
+        quantity: parseFloat(data.quantity),
+        lotType: data.lotType,
+        stopLoss: data.stopLoss ? parseFloat(data.stopLoss) : undefined,
+        takeProfit: data.takeProfit ? parseFloat(data.takeProfit) : undefined,
+        pnl: data.exitPrice ? calculatedPnL : undefined,
+        pips: data.exitPrice ? calculatedPips : undefined,
+        returnPercent: data.exitPrice ? calculatedReturnPercent : undefined,
         mood: data.mood,
         tags: data.tags,
         notes: data.notes,
@@ -145,14 +217,18 @@ export default function TradeModal({ children }: TradeModalProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-gray-300">Symbol</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        placeholder="TSLA"
-                        className="input-override"
-                        data-testid="input-symbol"
-                      />
-                    </FormControl>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="input-override" data-testid="select-symbol">
+                          <SelectValue placeholder="Select pair" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="glass-morphism border-gray-600">
+                        {getSupportedPairs().map((pair) => (
+                          <SelectItem key={pair} value={pair}>{pair}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -184,6 +260,52 @@ export default function TradeModal({ children }: TradeModalProps) {
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
+                name="quantity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-gray-300">Lot Size</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.01"
+                        placeholder="1.0"
+                        className="input-override"
+                        data-testid="input-quantity"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="lotType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-gray-300">Lot Type</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="input-override" data-testid="select-lot-type">
+                          <SelectValue placeholder="Select lot type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="glass-morphism border-gray-600">
+                        {Object.entries(LOT_SIZES).map(([key, config]) => (
+                          <SelectItem key={key} value={key}>{config.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
                 name="entryPrice"
                 render={({ field }) => (
                   <FormItem>
@@ -192,8 +314,8 @@ export default function TradeModal({ children }: TradeModalProps) {
                       <Input
                         {...field}
                         type="number"
-                        step="0.01"
-                        placeholder="250.00"
+                        step="0.00001"
+                        placeholder="1.09000"
                         className="input-override"
                         data-testid="input-entry-price"
                       />
@@ -208,13 +330,13 @@ export default function TradeModal({ children }: TradeModalProps) {
                 name="exitPrice"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-gray-300">Exit Price</FormLabel>
+                    <FormLabel className="text-gray-300">Exit Price (Optional)</FormLabel>
                     <FormControl>
                       <Input
                         {...field}
                         type="number"
-                        step="0.01"
-                        placeholder="255.00"
+                        step="0.00001"
+                        placeholder="1.09500"
                         className="input-override"
                         data-testid="input-exit-price"
                       />
@@ -225,25 +347,73 @@ export default function TradeModal({ children }: TradeModalProps) {
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="quantity"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-gray-300">Quantity</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="number"
-                      placeholder="100"
-                      className="input-override"
-                      data-testid="input-quantity"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="stopLoss"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-gray-300">Stop Loss (Optional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.00001"
+                        placeholder="1.08500"
+                        className="input-override"
+                        data-testid="input-stop-loss"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="takeProfit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-gray-300">Take Profit (Optional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.00001"
+                        placeholder="1.10500"
+                        className="input-override"
+                        data-testid="input-take-profit"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* PnL Preview */}
+            {pnlPreview && (
+              <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-600">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calculator className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm font-medium text-gray-300">Trade Preview</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-400">P&L:</span>
+                    <span className={`ml-2 font-medium ${pnlPreview.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {formatCurrency(pnlPreview.pnl)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400">Pips:</span>
+                    <span className={`ml-2 font-medium ${pnlPreview.pips >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {formatPips(pnlPreview.pips)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <FormLabel className="text-gray-300 block mb-2">
