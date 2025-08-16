@@ -131,12 +131,12 @@ export default function TradeModal({ children }: TradeModalProps) {
       const tradeData = {
         symbol: data.symbol,
         type: data.type,
-        entryPrice: parseFloat(data.entryPrice),
-        exitPrice: data.exitPrice ? parseFloat(data.exitPrice) : undefined,
-        quantity: parseFloat(data.quantity),
+        entryPrice: Math.abs(parseFloat(data.entryPrice)), // Ensure positive
+        exitPrice: data.exitPrice ? Math.abs(parseFloat(data.exitPrice)) : undefined,
+        quantity: Math.abs(parseFloat(data.quantity)), // Ensure positive
         lotType: data.lotType,
-        stopLoss: data.stopLoss ? parseFloat(data.stopLoss) : undefined,
-        takeProfit: data.takeProfit ? parseFloat(data.takeProfit) : undefined,
+        stopLoss: data.stopLoss ? Math.abs(parseFloat(data.stopLoss)) : undefined,
+        takeProfit: data.takeProfit ? Math.abs(parseFloat(data.takeProfit)) : undefined,
         pnl: data.exitPrice ? calculatedPnL : undefined,
         pips: data.exitPrice ? calculatedPips : undefined,
         returnPercent: data.exitPrice ? calculatedReturnPercent : undefined,
@@ -269,9 +269,16 @@ export default function TradeModal({ children }: TradeModalProps) {
                         {...field}
                         type="number"
                         step="0.01"
+                        min="0.01"
                         placeholder="1.0"
                         className="input-override"
                         data-testid="input-quantity"
+                        onBlur={(e) => {
+                          const value = Math.abs(parseFloat(e.target.value));
+                          if (value && value > 0) {
+                            field.onChange(value.toString());
+                          }
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -315,9 +322,16 @@ export default function TradeModal({ children }: TradeModalProps) {
                         {...field}
                         type="number"
                         step="0.00001"
+                        min="0.00001"
                         placeholder="1.09000"
                         className="input-override"
                         data-testid="input-entry-price"
+                        onBlur={(e) => {
+                          const value = Math.abs(parseFloat(e.target.value));
+                          if (value && value > 0) {
+                            field.onChange(value.toString());
+                          }
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -336,9 +350,16 @@ export default function TradeModal({ children }: TradeModalProps) {
                         {...field}
                         type="number"
                         step="0.00001"
+                        min="0.00001"
                         placeholder="1.09500"
                         className="input-override"
                         data-testid="input-exit-price"
+                        onBlur={(e) => {
+                          const value = Math.abs(parseFloat(e.target.value));
+                          if (value && value > 0) {
+                            field.onChange(value.toString());
+                          }
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
