@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login Test</title>
+</head>
+<body>
+    <h1>Login API Test</h1>
+    <button onclick="testLogin()">Test Login</button>
+    <button onclick="testCORS()">Test CORS</button>
+    <div id="results" style="margin-top: 20px; padding: 10px; background: #f0f0f0;"></div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5000/api';
+        
+        function log(message) {
+            const results = document.getElementById('results');
+            results.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+            console.log(message);
+        }
+        
+        async function testCORS() {
+            log('Testing CORS with health endpoint...');
+            try {
+                const response = await fetch('http://localhost:5000/health', {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                log('✅ CORS Health response status: ' + response.status);
+                const data = await response.json();
+                log('✅ CORS Health response data: ' + JSON.stringify(data));
+            } catch (error) {
+                log('❌ CORS Health test error: ' + error.message);
+            }
+        }
+        
+        async function testLogin() {
+            log('Testing login endpoint...');
+            try {
+                const loginData = {
+                    email: 'test@example.com',
+                    password: 'TestPassword123!'
+                };
+                
+                log('Sending request to: ' + API_BASE_URL + '/auth/login');
+                log('Request data: ' + JSON.stringify(loginData));
+                
+                const response = await fetch(API_BASE_URL + '/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(loginData),
+                    mode: 'cors'
+                });
+                
+                log('Login response status: ' + response.status);
+                log('Login response headers: ' + JSON.stringify(Object.fromEntries(response.headers.entries())));
+                
+                const responseText = await response.text();
+                log('Login response text: ' + responseText);
+                
+                try {
+                    const data = JSON.parse(responseText);
+                    log('Login response JSON: ' + JSON.stringify(data));
+                } catch (e) {
+                    log('Response is not valid JSON');
+                }
+                
+            } catch (error) {
+                log('❌ Login test error: ' + error.message);
+                log('❌ Error stack: ' + error.stack);
+            }
+        }
+        
+        window.onload = function() {
+            log('Test page loaded. Backend should be at: ' + API_BASE_URL);
+        };
+    </script>
+</body>
+</html>
