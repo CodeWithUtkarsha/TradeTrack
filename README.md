@@ -2,6 +2,10 @@
 
 A full-stack trading journal application built with React, Node.js, and MongoDB.
 
+## 🌐 Live Demo
+
+Check out the live application: [TradeTrack on Vercel](https://trade-track-cx31or1cb-newp.vercel.app)
+
 ## 🚀 Features
 
 - **Dashboard**: Real-time P&L tracking, win rates, and portfolio performance
